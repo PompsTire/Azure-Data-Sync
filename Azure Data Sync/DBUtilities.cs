@@ -14,7 +14,11 @@ namespace Azure_Data_Sync
         public enum ReportDefs
         {
             TreadRubberInventory = 0,
-            BarcodeAging = 1
+            BarcodeAging = 1,
+            DataComm = 2,
+            DataCommProviders = 3,
+            Stores = 4,
+            Regions = 5
         };
 
         private DataTable dt;
@@ -47,24 +51,58 @@ namespace Azure_Data_Sync
                     {
                         sTableName = "dbo.tb_TreadRubberInventory";
                         InitLog("Refresh " + sTableName);
-                        sSql = SQL_TireRubberInventory;                        
+                        sSql = SQL_TireRubberInventory;
+                        DownloadBasysSource(sSql);
                         break;
                     }
                 case ReportDefs.BarcodeAging:
                     {
                         sTableName = "dbo.tb_BarcodeAging";
                         InitLog("Refresh " + sTableName);
-                        sSql = SQL_BarcodeAging;                        
+                        sSql = SQL_BarcodeAging;
+                        DownloadBasysSource(sSql);
+                        break;
+                    }
+                case ReportDefs.DataComm:
+                    {
+                        sTableName = "dbo.tb_GL_DataCommBilling";
+                        InitLog("Refresh " + sTableName);
+                        sSql = SQL_DataComm;
+                        DownloadSqlSource(sSql);
+                        break;
+                    }
+                case ReportDefs.DataCommProviders:
+                    {
+                        sTableName = "dbo.tb_GL_DataCommProviders";
+                        InitLog("Refresh " + sTableName);
+                        sSql = SQL_DataCommProviders;
+                        DownloadSqlSource(sSql);
+                        break;
+                    }
+                case ReportDefs.Stores:
+                    {
+                        sTableName = "dbo.tb_Stores";
+                        InitLog("Refresh " + sTableName);
+                        sSql = SQL_Stores;
+                        DownloadSqlSource(sSql);
+                        break;
+                    }
+                case ReportDefs.Regions:
+                    {
+                        sTableName = "dbo.tb_Regions";
+                        InitLog("Refresh " + sTableName);
+                        sSql = SQL_Regions;
+                        DownloadSqlSource(sSql);
                         break;
                     }
             }            
-            DownloadBasysSource(sSql);
+            
             TruncateTargetSqlTable(sTableName);
             BulkCopyToSQL(sTableName);
             UpdateLog();
             return !IsError;
         }
-
+               
         private void BulkCopyToSQL(string tableName)
         {
             SqlBulkCopy bkcp = new SqlBulkCopy(connectionString_AZ);
@@ -137,6 +175,24 @@ namespace Azure_Data_Sync
             return objRslt;
         }
 
+        private void DownloadSqlSource(string sql)
+        {
+            SqlDataAdapter objDA = new SqlDataAdapter(sql, connectionString_GBSQL01v2);
+            dt = new DataTable();
+            RowsDownloaded = 0;
+            try
+            {
+                DL_StartedAt = System.DateTime.Now;
+                objDA.Fill(dt);
+                RowsDownloaded = dt.Rows.Count;
+            }
+            catch (Exception ex)
+            { SetError(ex.Message); }
+            finally
+            { DL_CompletedAt = System.DateTime.Now; }
+        }
+
+
         private void DownloadBasysSource(string sql)
         {
             OdbcDataAdapter objDA = new OdbcDataAdapter(sql, connectionString_BASYS);
@@ -201,6 +257,28 @@ namespace Azure_Data_Sync
         public string connectionString_GBSQL01v2 { get; set; }
 
         // Sql Statements
+        public string SQL_Stores
+        {
+            get
+            {
+                StringBuilder sb = new StringBuilder("Select S.StoreNo as StoreNumber, RIGHT('000' + convert(varchar(3),S.StoreNo), 3) as StoreNo, rtrim(S.StoreName) as StoreName, ");
+                sb.Append("rtrim(S.StoreAddress) as StoreAddress, rtrim(S.StoreCity) as StoreCity, rtrim(S.StoreState) as StoreState, S.StoreZip, ");
+                sb.Append("rtrim(S.StoreType) as StoreType, rtrim(S.StoreManager) as StoreManager, R.RegionNo From Store S INNER JOIN ");
+                sb.Append("Region R ON S.StoreRegionID = R.RegionID Where S.StoreActive = 1 AND S.StoreNo <> 0  Order By StoreNo ");
+                return sb.ToString();
+            }
+        }
+
+        public string SQL_Regions
+        {
+            get
+            {
+                StringBuilder sb = new StringBuilder("Select RegionNo, rtrim(RegionName) RegionName, rtrim(RegionManagerName) as RegionManagerName, ");
+                sb.Append("rtrim(RegionManagerSupervisor) as RegionManagerSupervisor From Region ");
+                return sb.ToString();
+            }
+        }
+
         public string SQL_TireRubberInventory
         {
             get
@@ -229,6 +307,49 @@ namespace Azure_Data_Sync
                 sb.Append("ORDER BY wo_det_rpt_view.wodstore, wo_det_rpt_view.line_status, wo_det_rpt_view.wodate");
                 return sb.ToString();
             }
+        }
+
+        public string SQL_DataComm
+        {
+            get
+            {
+                StringBuilder sb = new StringBuilder("Select Right('000' + convert(varchar(3), gmnbdiv), 3) as StoreNumber ");
+                sb.Append(",gadtcrt as DateCreated ");
+                sb.Append(",Replace(LEFT(REPLACE(RTRIM(gadsr), '     ','*'), CharIndex('*',REPLACE(RTRIM(gadsr), '     ','*'))),'*','') as ProviderName ");
+                sb.Append(",RTRIM(Replace(Substring(REPLACE(RTRIM(gadsr), '     ','*'), CharIndex('*',REPLACE(RTRIM(gadsr), '     ','*')), LEN(REPLACE(RTRIM(gadsr), '     ','*'))),'*','')) as AccountNumber ");
+                sb.Append(",case when cramt_gaamt = 0 then null else cramt_gaamt end as CreditAmount ");
+                sb.Append(",case when dbamt_gaamt = 0 then null else dbamt_gaamt end as DebitAmount ");
+                sb.Append(",gacdsys  as [Source], gmtypact as AccountType, GetDate() as LastUpdated ");
+                sb.Append("From openquery(maddenco_dta577,");
+                sb.Append("'select GA.GADTCRT,	");
+                sb.Append("GA.GADTPST,	");
+                sb.Append("GA.GAJEDTECRT, ");
+                sb.Append("GA.GAJETIMCRT, ");
+                sb.Append("GA.GADSR, ");
+                sb.Append("GA.GACDSYS, ");
+                sb.Append("CASE WHEN IFNULL(GA.GACDDBCR,'''') = ''CR'' THEN IFNULL(GA.GAAMT,0) ELSE ''0'' END as CRAMT_GAAMT, ");
+                sb.Append("CASE WHEN COALESCE(GA.GACDDBCR,'''') = ''DB'' THEN GA.GAAMT ELSE ''0'' END as DBAMT_GAAMT, ");
+                sb.Append("GA.ganbref, GA.ganbrefrc, ");
+                sb.Append("GA.gapr, GA.gaseq, GA.gayr, GA.gmnb, GA.gmnbdiv, GA.gmnbdpt, ");
+                sb.Append("GM.gmdcract, GM.gmtypact, GM.gmnbco ");
+                sb.Append("from gmad GA LEFT JOIN ");
+                sb.Append("gmgm GM ON GA.gmnb = GM.GMNB AND GA.GMNBDIV = GM.GMNBDIV AND GA.GMNBDPT = GM.GMNBDPT ");
+                sb.Append("where GA.gadtcrt between ''20210101'' AND ''20210630'' ");
+                sb.Append("AND GA.GMNB = ''72740'' ')");
+                return sb.ToString();
+            }
+        }
+
+        public string SQL_DataCommProviders
+        {
+            get
+            {
+                StringBuilder sb = new StringBuilder("Select ServiceProviderName as ProviderName, GetDate() as LastUpdated ");
+                sb.Append("From Pomps.dbo.tb_TelecommProviders ");
+                sb.Append("Where LEN(ServiceProviderName) > 0 ");
+                return sb.ToString();
+            }
+
         }
 
         public bool IsError { get; set; }
