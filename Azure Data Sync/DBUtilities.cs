@@ -18,7 +18,8 @@ namespace Azure_Data_Sync
             DataComm = 2,
             DataCommProviders = 3,
             Stores = 4,
-            Regions = 5
+            Regions = 5,
+            IncomingTires = 6
         };
 
         private DataTable dt;
@@ -92,6 +93,14 @@ namespace Azure_Data_Sync
                         sTableName = "dbo.tb_Regions";
                         InitLog("Refresh " + sTableName);
                         sSql = SQL_Regions;
+                        DownloadSqlSource(sSql);
+                        break;
+                    }
+                case ReportDefs.IncomingTires:
+                    {
+                        sTableName = "dbo.tb_IncomingTires";
+                        InitLog("Refresh " + sTableName);
+                        sSql = SQL_IncomingTires;
                         DownloadSqlSource(sSql);
                         break;
                     }
@@ -305,6 +314,24 @@ namespace Azure_Data_Sync
                 sb.Append("WHERE (wo_det_rpt_view.line_status In (6,8,11,13)) ");
                 sb.Append("AND(wo_det_rpt_view._modified<now() - interval '2 days') AND(wo_det_rpt_view._line_code<>'COM') ");
                 sb.Append("ORDER BY wo_det_rpt_view.wodstore, wo_det_rpt_view.line_status, wo_det_rpt_view.wodate");
+                return sb.ToString();
+            }
+        }
+
+        public string SQL_IncomingTires
+        {
+            get
+            {
+                StringBuilder sb = new StringBuilder("Select * From openquery(basys,'SELECT wo_det_rpt_view._row_id");
+                sb.Append(",wo_det_rpt_view._created,wo_det_rpt_view.wodate,wo_det_rpt_view.tracs_no,wo_det_rpt_view.wodno");
+                sb.Append(",wo_det_rpt_view.wodline,wo_det_rpt_view.wodstore,wo_det_rpt_view._wostbill");
+                sb.Append(",cast(wo_det_rpt_view._line_code as varchar(50)) as _line_code,wo_det_rpt_view.wodbrand,wo_det_rpt_view.wodtsize");
+                sb.Append(",wo_det_rpt_view.wodabbr,cast(wo_det_rpt_view._line_stat as varchar(50)) as _line_stat,wo_det_rpt_view._nsnact");
+                sb.Append(",wo_det_rpt_view._wonashploc,wo_det_rpt_view.cust_no,wo_det_rpt_view._cust_name ");
+                sb.Append("FROM pt.wo_det_rpt_view WHERE wo_det_rpt_view._created > (now() - INTERVAL ''24 hours'') ");
+                sb.Append("AND wo_det_rpt_view._line_stat In (''ORDERED'',''INTRANSIT'',''RECEIVED'') ");
+                sb.Append("AND wo_det_rpt_view._line_code Not In (''ADJ'',''COM'',''SCP'') ");
+                sb.Append("ORDER BY _created ' ) ");
                 return sb.ToString();
             }
         }
