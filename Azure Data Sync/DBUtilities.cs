@@ -52,6 +52,7 @@ namespace Azure_Data_Sync
                     {
                         sTableName = "dbo.tb_TreadRubberInventory";
                         InitLog("Refresh " + sTableName);
+                        TruncateTargetSqlTable(sTableName);
                         sSql = SQL_TireRubberInventory;
                         DownloadBasysSource(sSql);
                         break;
@@ -60,6 +61,7 @@ namespace Azure_Data_Sync
                     {
                         sTableName = "dbo.tb_BarcodeAging";
                         InitLog("Refresh " + sTableName);
+                        TruncateTargetSqlTable(sTableName);
                         sSql = SQL_BarcodeAging;
                         DownloadBasysSource(sSql);
                         break;
@@ -68,6 +70,7 @@ namespace Azure_Data_Sync
                     {
                         sTableName = "dbo.tb_GL_DataCommBilling";
                         InitLog("Refresh " + sTableName);
+                        TruncateTargetSqlTable(sTableName);
                         sSql = SQL_DataComm;
                         DownloadSqlSource(sSql);
                         break;
@@ -76,6 +79,7 @@ namespace Azure_Data_Sync
                     {
                         sTableName = "dbo.tb_GL_DataCommProviders";
                         InitLog("Refresh " + sTableName);
+                        TruncateTargetSqlTable(sTableName);
                         sSql = SQL_DataCommProviders;
                         DownloadSqlSource(sSql);
                         break;
@@ -84,6 +88,7 @@ namespace Azure_Data_Sync
                     {
                         sTableName = "dbo.tb_Stores";
                         InitLog("Refresh " + sTableName);
+                        TruncateTargetSqlTable(sTableName);
                         sSql = SQL_Stores;
                         DownloadSqlSource(sSql);
                         break;
@@ -92,6 +97,7 @@ namespace Azure_Data_Sync
                     {
                         sTableName = "dbo.tb_Regions";
                         InitLog("Refresh " + sTableName);
+                        TruncateTargetSqlTable(sTableName);
                         sSql = SQL_Regions;
                         DownloadSqlSource(sSql);
                         break;
@@ -99,14 +105,13 @@ namespace Azure_Data_Sync
                 case ReportDefs.IncomingTires:
                     {
                         sTableName = "dbo.tb_IncomingTires";
-                        InitLog("Refresh " + sTableName);
+                        InitLog("Refresh " + sTableName);                       
+                        ExecScalarSql(SQL_IncomingTires_TrimTable); // Data will be appended rather than replaced. Maintain 2 months of data then delete older
                         sSql = SQL_IncomingTires;
                         DownloadSqlSource(sSql);
                         break;
                     }
             }            
-            
-            TruncateTargetSqlTable(sTableName);
             BulkCopyToSQL(sTableName);
             UpdateLog();
             return !IsError;
@@ -327,11 +332,29 @@ namespace Azure_Data_Sync
                 sb.Append(",wo_det_rpt_view.wodline,wo_det_rpt_view.wodstore,wo_det_rpt_view._wostbill");
                 sb.Append(",cast(wo_det_rpt_view._line_code as varchar(50)) as _line_code,wo_det_rpt_view.wodbrand,wo_det_rpt_view.wodtsize");
                 sb.Append(",wo_det_rpt_view.wodabbr,cast(wo_det_rpt_view._line_stat as varchar(50)) as _line_stat,wo_det_rpt_view._nsnact");
-                sb.Append(",wo_det_rpt_view._wonashploc,wo_det_rpt_view.cust_no,wo_det_rpt_view._cust_name ");
+                sb.Append(",wo_det_rpt_view._wonashploc,wo_det_rpt_view.cust_no,wo_det_rpt_view._cust_name, " + JobLogID.ToString() + " as fk_maintenancelogid ");
                 sb.Append("FROM pt.wo_det_rpt_view WHERE wo_det_rpt_view._created > (now() - INTERVAL ''24 hours'') ");
                 sb.Append("AND wo_det_rpt_view._line_stat In (''ORDERED'',''INTRANSIT'',''RECEIVED'') ");
                 sb.Append("AND wo_det_rpt_view._line_code Not In (''ADJ'',''COM'',''SCP'') ");
                 sb.Append("ORDER BY _created ' ) ");
+                return sb.ToString();
+            }
+        }
+
+        public string SQL_IncomingTires_TrimTable
+        {
+            get
+            {
+                String MM = System.DateTime.Today.AddMonths(-1).Month.ToString();
+                String YY = System.DateTime.Today.AddMonths(-1).Year.ToString();
+                String MDYY = MM + "/01/" + YY;
+
+                StringBuilder sb = new StringBuilder("Delete From [dbo].[tb_TreadRubberInventory] ");
+                sb.Append("Where fk_maintenancelogid IN ");
+                sb.Append("(Select PKID ");
+                sb.Append(" From [dbo].[tb_DataMaintenanceLog] ");
+                sb.Append(" where taskname like '%incomingtires%' ");
+                sb.Append(" AND DateTimeStart < '" + MDYY + "') ");
                 return sb.ToString();
             }
         }
