@@ -19,7 +19,8 @@ namespace Azure_Data_Sync
             DataCommProviders = 3,
             Stores = 4,
             Regions = 5,
-            IncomingTires = 6
+            IncomingTires = 6,
+            WorkorderRepairDetails = 7
         };
 
         private DataTable dt;
@@ -111,6 +112,15 @@ namespace Azure_Data_Sync
                         DownloadSqlSource(sSql);
                         break;
                     }
+                case ReportDefs.WorkorderRepairDetails:
+                    {
+                        sTableName = "dbo.tb_WorkorderRepairdetails";
+                        InitLog("Refresh " + sTableName);
+                        TruncateTargetSqlTable(sTableName);
+                        sSql = SQL_WorkorderRepairDetails;
+                        DownloadBasysSource(sSql);
+                        break;
+                    }
             }            
             BulkCopyToSQL(sTableName);
             UpdateLog();
@@ -121,6 +131,7 @@ namespace Azure_Data_Sync
         {
             SqlBulkCopy bkcp = new SqlBulkCopy(connectionString_AZ);
             bkcp.DestinationTableName = tableName;
+            bkcp.BulkCopyTimeout = 3000;
             RowsUploaded = 0;
             UP_StartedAt = System.DateTime.Now;
             try
@@ -210,6 +221,7 @@ namespace Azure_Data_Sync
         private void DownloadBasysSource(string sql)
         {
             OdbcDataAdapter objDA = new OdbcDataAdapter(sql, connectionString_BASYS);
+            objDA.SelectCommand.CommandTimeout = 3000;
             dt = new DataTable();
             RowsDownloaded = 0;
             try
@@ -337,6 +349,24 @@ namespace Azure_Data_Sync
                 sb.Append("AND wo_det_rpt_view._line_stat In (''ORDERED'',''INTRANSIT'',''RECEIVED'') ");
                 sb.Append("AND wo_det_rpt_view._line_code Not In (''ADJ'',''COM'',''SCP'') ");
                 sb.Append("ORDER BY _created ' ) ");
+                return sb.ToString();
+            }
+        }
+
+        public string SQL_WorkorderRepairDetails
+        {
+            get
+            {
+                StringBuilder sb = new StringBuilder("SELECT wo_det_rpt_view.wodno, wo_det_rpt_view.wodline, wo_det_rpt_view.wodstore, wo_det_rpt_view.woddate, ");
+                sb.Append("wo_det_rpt_view.bead, wo_det_rpt_view.spot, wo_det_rpt_view.nail, wo_det_rpt_view.rr1, wo_det_rpt_view.section, ");
+                sb.Append("wo_det_rpt_view.line_status, wo_det_rpt_view._line_stat, wo_det_rpt_view.wodcode, wo_det_rpt_view._line_code, ");
+                sb.Append("wo_det_rpt_view.ins_upd, wo_det_rpt_view.wodprod, wo_det_rpt_view._nrt_tire, wo_det_rpt_view._nrt_code, wo_det_rpt_view._nrt_reason ");
+                sb.Append("FROM pt.wo_det_rpt_view wo_det_rpt_view ");
+                sb.Append("WHERE (wo_det_rpt_view.woddate>={d '2021-01-01'} ");
+                sb.Append("And wo_det_rpt_view.woddate<{d '2021-08-01'}) ");
+                sb.Append("AND (wo_det_rpt_view.line_status Not In (0,1,4)) ");
+                sb.Append("AND (wo_det_rpt_view.wodcode Not In (8)) ");
+                sb.Append("AND (wo_det_rpt_view._line_stat Not In ('SERVICE')) ");
                 return sb.ToString();
             }
         }

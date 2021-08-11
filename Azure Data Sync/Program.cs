@@ -72,6 +72,13 @@ namespace Azure_Data_Sync
                             break;
                         }
 
+                    case "-WORKORDERREPAIRDETAILS":
+                        {
+                            HasArgs = true;
+                            objDB.ExecuteDataRefresh(DBUtilities.ReportDefs.WorkorderRepairDetails);
+                            break;
+                        }
+
                     default:
                         {
                             Console.WriteLine("\r\n  ERROR: Invalid Command Line Parameter\r\n");
@@ -95,8 +102,8 @@ namespace Azure_Data_Sync
             if(HasArgs == false)
                 Console.Write(HowToUse);
 
-            //Console.WriteLine("\r\nPress Any Key...");
-            //Console.ReadKey();
+            Console.WriteLine("\r\nPress Any Key...");
+            Console.ReadKey();
 
         }
 
@@ -139,7 +146,9 @@ namespace Azure_Data_Sync
                 sb.Append(sH);
                 sb.Append("  -REGIONS                |  tb_Regions\r\n");
                 sb.Append(sH);
-                sb.Append("  -INCOMINGTIRES                 |  tb_IncomingTires\r\n");
+                sb.Append("  -INCOMINGTIRES          |  tb_IncomingTires\r\n");
+                sb.Append(sH);
+                sb.Append("  -WORKORDERREPAIRDETAILS |  tb_WorkOrderRepairDetails\r\n");
                 sb.Append(sH);
                 return sb.ToString();
             }
