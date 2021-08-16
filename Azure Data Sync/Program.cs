@@ -79,6 +79,23 @@ namespace Azure_Data_Sync
                             break;
                         }
 
+                    case "-TEST":
+                        {
+                            string sST = objDB.LastMonth(false);
+                            string sEN = objDB.LastMonth(true);
+
+                            break;
+                        }
+
+                    case "-?":
+                        {
+                            Console.Write(HowToUse);
+                            Console.WriteLine("\r\nPress Any Key...");
+                            Console.ReadKey();
+                            HasArgs = false;
+                            break;
+                        }
+
                     default:
                         {
                             Console.WriteLine("\r\n  ERROR: Invalid Command Line Parameter\r\n");
@@ -99,11 +116,11 @@ namespace Azure_Data_Sync
                 }
             }
             
-            if(HasArgs == false)
-                Console.Write(HowToUse);
+            //if(HasArgs == false)
+            //    Console.Write(HowToUse);
 
-            Console.WriteLine("\r\nPress Any Key...");
-            Console.ReadKey();
+            //Console.WriteLine("\r\nPress Any Key...");
+            //Console.ReadKey();
 
         }
 
@@ -132,7 +149,7 @@ namespace Azure_Data_Sync
                 string sH = "--------------------------------------------------------\r\n"; 
                 StringBuilder sb = new StringBuilder("\r\nUse command line parameters to refresh the data in 'powerbi - pomps' database in Azure:\r\n\r\n");
                 sb.Append(sH);
-                sb.Append(" Command Line Parameters  |    Sql tables refreshed\r\n");
+                sb.Append(" Command Line Parameters: |    Sql tables refreshed:\r\n");
                 sb.Append(sH);
                 sb.Append("  -TREADRUBBERINVENTORY   |  tb_TreadRubberInventory\r\n");
                 sb.Append(sH);
@@ -149,6 +166,8 @@ namespace Azure_Data_Sync
                 sb.Append("  -INCOMINGTIRES          |  tb_IncomingTires\r\n");
                 sb.Append(sH);
                 sb.Append("  -WORKORDERREPAIRDETAILS |  tb_WorkOrderRepairDetails\r\n");
+                sb.Append(sH);
+                sb.Append("  -?                      |  Display Available Commandline Parameters\r\n");
                 sb.Append(sH);
                 return sb.ToString();
             }

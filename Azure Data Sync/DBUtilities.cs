@@ -46,16 +46,15 @@ namespace Azure_Data_Sync
         public bool ExecuteDataRefresh(ReportDefs rptDef)
         {
             String sTableName = "";
-            String sSql = "";
             switch (rptDef)
             {
                 case ReportDefs.TreadRubberInventory:
                     {
                         sTableName = "dbo.tb_TreadRubberInventory";
                         InitLog("Refresh " + sTableName);
-                        TruncateTargetSqlTable(sTableName);
-                        sSql = SQL_TireRubberInventory;
-                        DownloadBasysSource(sSql);
+                        TruncateTargetSqlTable(sTableName);    
+                        DownloadBasysSource(SQL_TireRubberInventory);
+                        BulkCopyToSQL(sTableName);
                         break;
                     }
                 case ReportDefs.BarcodeAging:
@@ -63,17 +62,17 @@ namespace Azure_Data_Sync
                         sTableName = "dbo.tb_BarcodeAging";
                         InitLog("Refresh " + sTableName);
                         TruncateTargetSqlTable(sTableName);
-                        sSql = SQL_BarcodeAging;
-                        DownloadBasysSource(sSql);
+                        DownloadBasysSource(SQL_BarcodeAging);
+                        BulkCopyToSQL(sTableName);                        
                         break;
                     }
                 case ReportDefs.DataComm:
                     {
                         sTableName = "dbo.tb_GL_DataCommBilling";
                         InitLog("Refresh " + sTableName);
-                        TruncateTargetSqlTable(sTableName);
-                        sSql = SQL_DataComm;
-                        DownloadSqlSource(sSql);
+                        TruncateTargetSqlTable(sTableName);    
+                        DownloadSqlSource(SQL_DataComm);
+                        BulkCopyToSQL(sTableName);
                         break;
                     }
                 case ReportDefs.DataCommProviders:
@@ -81,8 +80,8 @@ namespace Azure_Data_Sync
                         sTableName = "dbo.tb_GL_DataCommProviders";
                         InitLog("Refresh " + sTableName);
                         TruncateTargetSqlTable(sTableName);
-                        sSql = SQL_DataCommProviders;
-                        DownloadSqlSource(sSql);
+                        DownloadSqlSource(SQL_DataCommProviders);
+                        BulkCopyToSQL(sTableName);
                         break;
                     }
                 case ReportDefs.Stores:
@@ -90,39 +89,48 @@ namespace Azure_Data_Sync
                         sTableName = "dbo.tb_Stores";
                         InitLog("Refresh " + sTableName);
                         TruncateTargetSqlTable(sTableName);
-                        sSql = SQL_Stores;
-                        DownloadSqlSource(sSql);
+                        DownloadSqlSource(SQL_Stores);
+                        BulkCopyToSQL(sTableName);
                         break;
                     }
                 case ReportDefs.Regions:
                     {
                         sTableName = "dbo.tb_Regions";
                         InitLog("Refresh " + sTableName);
-                        TruncateTargetSqlTable(sTableName);
-                        sSql = SQL_Regions;
-                        DownloadSqlSource(sSql);
+                        TruncateTargetSqlTable(sTableName);     
+                        DownloadSqlSource(SQL_Regions);
+                        BulkCopyToSQL(sTableName);
                         break;
                     }
                 case ReportDefs.IncomingTires:
                     {
+                        // Data will be appended rather than replaced. Maintain 2 months of data then delete older
                         sTableName = "dbo.tb_IncomingTires";
-                        InitLog("Refresh " + sTableName);                       
-                        ExecScalarSql(SQL_IncomingTires_TrimTable); // Data will be appended rather than replaced. Maintain 2 months of data then delete older
-                        sSql = SQL_IncomingTires;
-                        DownloadSqlSource(sSql);
+                        InitLog("Refresh " + sTableName);    
+                        // Purge data that is older than our 2 month window
+                        ExecScalarSql(SQL_IncomingTires_TrimTable);                      
+                        DownloadSqlSource(SQL_IncomingTires);
+                        BulkCopyToSQL(sTableName);
                         break;
                     }
                 case ReportDefs.WorkorderRepairDetails:
                     {
-                        sTableName = "dbo.tb_WorkorderRepairdetails";
-                        InitLog("Refresh " + sTableName);
+                        // Updating monthly with large number of records. _row_id has to be unique so we are using a staging table. 
+                        // Use bulkcopy to upload to staging table. Then call store proc that will only insert unique records into
+                        // production table.
+                        sTableName = "dbo.tb_WorkorderRepairdetails_STAGING";
+                        InitLog("Refresh " + sTableName);                                                
+                        // Download all records within next reporting period from source db
+                        DownloadBasysSource(SQL_WorkorderRepairDetails);
+                        // Ensure staging table is empty
                         TruncateTargetSqlTable(sTableName);
-                        sSql = SQL_WorkorderRepairDetails;
-                        DownloadBasysSource(sSql);
+                        // Fastest way to upload large datatable to staging DB
+                        BulkCopyToSQL(sTableName);
+                        // Run proc to insert unique records into production
+                        ExecScalarSql("EXEC [powerbi-pomps].dbo.up_SyncStagingToProd");
                         break;
                     }
-            }            
-            BulkCopyToSQL(sTableName);
+            }                        
             UpdateLog();
             return !IsError;
         }
@@ -139,7 +147,7 @@ namespace Azure_Data_Sync
                 foreach (DataColumn col in dt.Columns)
                 {
                     // This is assuming that the source column names and character casing exactly matches the target table column names and character casing. 
-                    // Mapping names are case sensitive. Will need to change this if source and target names do not match on future data uploads
+                    // Mapping names are case sensitive. 
                     bkcp.ColumnMappings.Add(col.ColumnName, col.ColumnName);
                 }
                 bkcp.WriteToServer(dt);
@@ -216,8 +224,7 @@ namespace Azure_Data_Sync
             finally
             { DL_CompletedAt = System.DateTime.Now; }
         }
-
-
+        
         private void DownloadBasysSource(string sql)
         {
             OdbcDataAdapter objDA = new OdbcDataAdapter(sql, connectionString_BASYS);
@@ -357,13 +364,13 @@ namespace Azure_Data_Sync
         {
             get
             {
-                StringBuilder sb = new StringBuilder("SELECT wo_det_rpt_view.wodno, wo_det_rpt_view.wodline, wo_det_rpt_view.wodstore, wo_det_rpt_view.woddate, ");
+                StringBuilder sb = new StringBuilder("SELECT wo_det_rpt_view._row_id, wo_det_rpt_view.wodno, wo_det_rpt_view.wodline, wo_det_rpt_view.wodstore, wo_det_rpt_view.woddate, ");
                 sb.Append("wo_det_rpt_view.bead, wo_det_rpt_view.spot, wo_det_rpt_view.nail, wo_det_rpt_view.rr1, wo_det_rpt_view.section, ");
                 sb.Append("wo_det_rpt_view.line_status, wo_det_rpt_view._line_stat, wo_det_rpt_view.wodcode, wo_det_rpt_view._line_code, ");
                 sb.Append("wo_det_rpt_view.ins_upd, wo_det_rpt_view.wodprod, wo_det_rpt_view._nrt_tire, wo_det_rpt_view._nrt_code, wo_det_rpt_view._nrt_reason ");
                 sb.Append("FROM pt.wo_det_rpt_view wo_det_rpt_view ");
-                sb.Append("WHERE (wo_det_rpt_view.woddate>={d '2021-01-01'} ");
-                sb.Append("And wo_det_rpt_view.woddate<{d '2021-08-01'}) ");
+                sb.Append("WHERE (wo_det_rpt_view.woddate >= {d '" + LastMonth(false) + "'} ");
+                sb.Append("And wo_det_rpt_view.woddate < {d '" + LastMonth(true) + "'}) ");
                 sb.Append("AND (wo_det_rpt_view.line_status Not In (0,1,4)) ");
                 sb.Append("AND (wo_det_rpt_view.wodcode Not In (8)) ");
                 sb.Append("AND (wo_det_rpt_view._line_stat Not In ('SERVICE')) ");
@@ -430,6 +437,32 @@ namespace Azure_Data_Sync
                 return sb.ToString();
             }
 
+        }
+
+        public string LastMonth(bool UseEndOfMonth)
+        {
+            String YY = "";
+            String MM = "";
+            String DD = "01";
+            String RtnDate = "";
+
+            YY = System.DateTime.Today.AddMonths(-1).Year.ToString();
+
+            if (UseEndOfMonth == false)
+            {
+                MM = System.DateTime.Today.AddMonths(-1).Month.ToString();
+                RtnDate = YY + "-" + MM + "-" + DD;
+                //Testing: // RtnDate = "2021-07-01";
+            }
+            else
+            {
+                MM = System.DateTime.Today.Month.ToString();
+                DD = (DateTime.Parse(YY + "-" + MM + "-01")).AddDays(-1).Day.ToString();
+                MM = System.DateTime.Today.AddMonths(-1).Month.ToString();
+                RtnDate = YY + "-" + MM + "-" + DD;
+                // Testing: //RtnDate = "2021-08-16";
+            }
+            return RtnDate;                                                  
         }
 
         public bool IsError { get; set; }
